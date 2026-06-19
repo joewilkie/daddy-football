@@ -1949,5 +1949,203 @@ const NFL_DEPTH = NFL_TEAM_META.map((meta, i) => ({
   RBs:    DC_RB[i].filter(Boolean),
   WRs:    DC_WR[i].filter(Boolean),
   TEs:    DC_TE[i].filter(Boolean),
-  DST:    meta[0] + ' D/ST',
-  K: 
+  K:      DC_K[i],
+}));
+
+// ============================================================
+// Build draft pool from NFL depth charts
+function buildPoolFromDepthCharts() {
+  const pv = {};
+  PLAYER_POOL.forEach(p => { pv[p.n.toLowerCase()] = p.val; });
+
+  const rankVals = {
+    QB: [72, 42, 18, 10],
+    RB: [80, 58, 38, 22, 12, 6],
+    WR: [75, 58, 42, 28, 16,  8, 4],
+    TE: [65, 35, 15,  8],
+  };
+
+  const pool = [];
+  const seen = new Set();
+
+  NFL_DEPTH.forEach(team => {
+    [['QBs','QB'],['RBs','RB'],['WRs','WR'],['TEs','TE']].forEach(([grp, pos]) => {
+      team[grp].forEach((name, rank) => {
+        if (!name) return;
+        const key = name.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        const val = pv[key] !== undefined ? pv[key] : (rankVals[pos][rank] !== undefined ? rankVals[pos][rank] : 3);
+        pool.push({ n: name, pos, val });
+      });
+    });
+    if (!seen.has(team.DST.toLowerCase())) {
+      seen.add(team.DST.toLowerCase());
+      pool.push({ n: team.DST, pos: 'D/ST', val: pv[team.DST.toLowerCase()] !== undefined ? pv[team.DST.toLowerCase()] : 28 });
+    }
+    if (team.K && !seen.has(team.K.toLowerCase())) {
+      seen.add(team.K.toLowerCase());
+      pool.push({ n: team.K, pos: 'K', val: pv[team.K.toLowerCase()] !== undefined ? pv[team.K.toLowerCase()] : 28 });
+    }
+  });
+
+  Object.entries(DC_FA).forEach(([pos, players]) => {
+    players.forEach(name => {
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      pool.push({ n: name, pos, val: pv[key] !== undefined ? pv[key] : 20 });
+    });
+  });
+
+  return pool;
+}
+
+
+let depthFilter = 'all';
+let depthSearch = '';
+
+function setDepthFilter(f, btn) {
+  depthFilter = f;
+  document.querySelectorAll('.depth-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderDepthCharts();
+}
+
+function filterDepth() {
+  depthSearch = document.getElementById('depth-search').value.trim().toLowerCase();
+  renderDepthCharts();
+}
+
+function rankClass(i) {
+  if (i === 0) return 'r1';
+  if (i === 1) return 'r2';
+  if (i === 2) return 'r3';
+  return 'r4';
+}
+
+function renderDepthCharts() {
+  const grid = document.getElementById('depth-grid');
+  const search = depthSearch;
+
+  // Filter teams
+  const filtered = NFL_DEPTH.filter(t => {
+    if (depthFilter === 'all') return true;
+    if (depthFilter === 'FA') return false;
+    if (depthFilter === 'NFC' || depthFilter === 'AFC') return t.conf === depthFilter;
+    return (t.conf + ' ' + t.div) === depthFilter;
+  });
+
+  let matchCount = 0;
+
+  const cards = filtered.map(t => {
+    // Check if search matches this team
+    const allPlayers = [...t.QBs, ...t.RBs, ...t.WRs, ...t.TEs, t.K, t.DST];
+    const teamMatches = search ? allPlayers.some(p => p && p.toLowerCase().includes(search)) : true;
+    if (!teamMatches && search) return `<div class="depth-card hidden" data-team="${t.abbr}"></div>`;
+
+    function playerRow(player, idx) {
+      if (!player) return '';
+      const rc = rankClass(idx);
+      const hl = search && player.toLowerCase().includes(search);
+      if (hl) matchCount++;
+      return `<div class="depth-player">
+        <span class="depth-rank ${rc}">${idx+1}</span>
+        <span class="depth-player-name ${rc}${hl?' highlight':''}">${player}</span>
+      </div>`;
+    }
+
+    const kHl = search && t.K && t.K.toLowerCase().includes(search);
+    const dstHl = search && t.DST.toLowerCase().includes(search);
+    if (kHl) matchCount++;
+    if (dstHl) matchCount++;
+
+    return `
+    <div class="depth-card" data-team="${t.abbr}" data-conf="${t.conf}" data-div="${t.conf} ${t.div}">
+      <div class="depth-card-header" style="background:linear-gradient(135deg,${t.color}44,transparent);">
+        <div class="team-logo-placeholder" style="background:${t.color}33;color:${t.color === '#000000' ? '#fff' : t.color};font-size:0.85rem;font-weight:900;">${t.abbr}</div>
+        <div>
+          <h3>${t.emoji} ${t.name}</h3>
+          <div class="conf-badge">${t.conf} ${t.div}</div>
+        </div>
+      </div>
+      <div class="depth-pos-section">
+        <div class="depth-pos-label">QB</div>
+        ${t.QBs.map((p,i) => playerRow(p,i)).join('')}
+      </div>
+      <div class="depth-pos-section">
+        <div class="depth-pos-label">RB</div>
+        ${t.RBs.map((p,i) => playerRow(p,i)).join('')}
+      </div>
+      <div class="depth-pos-section">
+        <div class="depth-pos-label">WR</div>
+        ${t.WRs.map((p,i) => playerRow(p,i)).join('')}
+      </div>
+      <div class="depth-pos-section">
+        <div class="depth-pos-label">TE</div>
+        ${t.TEs.map((p,i) => playerRow(p,i)).join('')}
+      </div>
+      <div class="depth-pos-section">
+        <div class="depth-pos-label">K</div>
+        <div class="depth-player">
+          <span class="depth-rank r1">1</span>
+          <span class="depth-player-name r1${kHl?' highlight':''}">${t.K}</span>
+        </div>
+      </div>
+      <div class="depth-pos-section">
+        <div class="depth-pos-label">D/ST</div>
+        <div class="depth-player">
+          <span class="depth-rank r1">1</span>
+          <span class="depth-player-name r1${dstHl?' highlight':''}">${t.name} D/ST</span>
+        </div>
+      </div>
+    </div>`;
+  });
+
+  // Free Agents section
+  let faSection = '';
+  if (depthFilter === 'all' || depthFilter === 'FA') {
+    const faMatches = search ? Object.values(DC_FA).flat().some(p => p.toLowerCase().includes(search)) : true;
+    if (faMatches || !search) {
+      faSection = `<div class="fa-section" style="grid-column:1/-1;">
+        <h3>🆓 Best Available Free Agents</h3>
+        <div class="fa-grid">
+          ${Object.entries(DC_FA).map(([pos, players]) => `
+            <div class="fa-pos-group">
+              <h4>${pos}</h4>
+              ${players.map((p,i) => {
+                const hl = search && p.toLowerCase().includes(search);
+                if (hl) matchCount++;
+                return `<div class="fa-player ${i===0?'r1':''}${hl?' highlight':''}">${i+1}. ${p}</div>`;
+              }).join('')}
+            </div>`).join('')}
+        </div>
+      </div>`;
+    }
+  }
+
+  grid.innerHTML = cards.join('') + faSection;
+
+  // Update match count
+  const countEl = document.getElementById('depth-match-count');
+  if (search) {
+    countEl.textContent = `${matchCount} player match${matchCount !== 1 ? 'es' : ''} found for "${depthSearch}"`;
+    countEl.style.color = matchCount > 0 ? '#4ade80' : '#f87171';
+  } else {
+    countEl.textContent = `Showing ${filtered.length} team${filtered.length !== 1 ? 's' : ''}`;
+    countEl.style.color = 'var(--muted)';
+  }
+}
+
+// ============================================================
+// Responsive two-col
+const twoCol = document.querySelector('.two-col');
+if (twoCol) {
+  const style = document.createElement('style');
+  style.textContent = '@media(max-width:700px){.two-col{grid-template-columns:1fr!important}}';
+  document.head.appendChild(style);
+}
+</script>
+</body>
+</html>
