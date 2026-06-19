@@ -1949,6 +1949,7 @@ const NFL_DEPTH = NFL_TEAM_META.map((meta, i) => ({
   RBs:    DC_RB[i].filter(Boolean),
   WRs:    DC_WR[i].filter(Boolean),
   TEs:    DC_TE[i].filter(Boolean),
+  DST:    meta[0] + ' D/ST',
   K:      DC_K[i],
 }));
 
@@ -2145,7 +2146,3 @@ if (twoCol) {
   const style = document.createElement('style');
   style.textContent = '@media(max-width:700px){.two-col{grid-template-columns:1fr!important}}';
   document.head.appendChild(style);
-}
-</script>
-</body>
-</html>
