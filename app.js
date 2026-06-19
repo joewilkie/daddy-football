@@ -399,7 +399,7 @@ function renderTeams() {
   const badge = document.getElementById('teams-status-badge');
   if (badge) badge.textContent = drafted > 0 ? drafted + ' players rostered' : 'Draft Not Yet Held';
 
-  // Populate trade team selects
+  // Populate trade team selects (only once)
   const selA = document.getElementById('trade-team-a');
   const selB = document.getElementById('trade-team-b');
   if (selA && selA.options.length === 0) {
@@ -410,42 +410,83 @@ function renderTeams() {
     if (selB.options.length > 1) selB.selectedIndex = 1;
   }
 
-  const POS_ORDER = ['QB','RB','WR','TE','D/ST','K','?'];
+  // Roster slot definitions
+  const SLOTS = [
+    {label:'QB',  pos:'QB'},
+    {label:'RB',  pos:'RB'},
+    {label:'RB',  pos:'RB'},
+    {label:'WR',  pos:'WR'},
+    {label:'WR',  pos:'WR'},
+    {label:'TE',  pos:'TE'},
+    {label:'FLEX',pos:'FLEX'},
+    {label:'D/ST',pos:'DST'},
+    {label:'K',   pos:'K'},
+    {label:'BE',  pos:'BE'},
+    {label:'BE',  pos:'BE'},
+    {label:'BE',  pos:'BE'},
+    {label:'BE',  pos:'BE'},
+    {label:'BE',  pos:'BE'},
+    {label:'BE',  pos:'BE'},
+    {label:'BE',  pos:'BE'},
+  ];
 
   grid.innerHTML = TEAMS.map(t => {
     const isMe = t.id === MY_TEAM;
     const roster = rosters[t.id] || [];
-    const sorted = [...roster].sort((a, b) => {
-      const ai = POS_ORDER.indexOf(a.pos) === -1 ? 99 : POS_ORDER.indexOf(a.pos);
-      const bi = POS_ORDER.indexOf(b.pos) === -1 ? 99 : POS_ORDER.indexOf(b.pos);
-      return ai - bi || a.player.localeCompare(b.player);
+
+    // Fill slots greedily by position
+    const remaining = [...roster];
+    const slotsFilled = SLOTS.map(slot => {
+      if (roster.length === 0) return null; // no draft data yet
+      let idx = -1;
+      if (slot.pos === 'FLEX') {
+        idx = remaining.findIndex(p => ['RB','WR','TE'].includes(p.pos));
+      } else if (slot.pos === 'BE') {
+        idx = remaining.length > 0 ? 0 : -1;
+      } else if (slot.pos === 'DST') {
+        idx = remaining.findIndex(p => p.pos === 'D/ST');
+      } else {
+        idx = remaining.findIndex(p => p.pos === slot.pos);
+      }
+      if (idx > -1) {
+        const p = remaining.splice(idx, 1)[0];
+        return p;
+      }
+      return null;
     });
 
-    const playerRows = sorted.length > 0
-      ? sorted.map(p => `
-          <div class="roster-slot" style="justify-content:space-between;">
-            <div style="display:flex;align-items:center;gap:8px;">
-              <span class="pos-badge ${(p.pos||'').replace('/','')}">${p.pos||'?'}</span>
-              <span style="${p.source==='trade'?'color:var(--blue);':''}">${p.player}${p.source==='trade'?' 🔄':''}</span>
-            </div>
-            <button onclick="dropPlayer('${t.id}','${p.player.replace(/'/g,"\'")}','${p.pos||''}')" 
-              style="font-size:0.68rem;color:var(--muted);background:none;border:1px solid var(--border);border-radius:4px;padding:2px 6px;cursor:pointer;" 
-              title="Drop player">✕ Drop</button>
-          </div>`)
-        .join('')
-      : '<div style="padding:12px 14px;color:var(--muted);font-size:0.82rem;">No players yet — enter picks in Live Draft</div>';
+    const slotRows = SLOTS.map((slot, i) => {
+      const p = slotsFilled[i];
+      const badgeClass = slot.label.replace('/','');
+      if (p) {
+        const traded = p.source === 'trade' ? ' 🔄' : '';
+        const dropBtn = `<button onclick="dropPlayer('${t.id}','${p.player.replace(/'/g,'&#39;')}','${p.pos||''}')" 
+          style="font-size:0.65rem;color:var(--muted);background:none;border:1px solid var(--border);border-radius:3px;padding:1px 5px;cursor:pointer;margin-left:4px;" title="Drop">✕</button>`;
+        return `<div class="roster-slot">
+          <span class="pos-badge ${badgeClass}">${slot.label}</span>
+          <span style="flex:1;${p.source==='trade'?'color:var(--blue);':''}">${p.player}${traded}</span>
+          ${dropBtn}
+        </div>`;
+      }
+      return `<div class="roster-slot">
+        <span class="pos-badge ${badgeClass}">${slot.label}</span>
+        <span class="player-empty">${roster.length > 0 ? '—' : 'TBD'}</span>
+      </div>`;
+    }).join('');
 
     return `
       <div class="team-card ${isMe?'my-team':''}">
         <div class="team-card-header">
           <div>
             <h3>${isMe?'⭐ ':''} ${t.teamName}</h3>
-            <div style="font-size:0.72rem;color:rgba(255,255,255,0.6);margin-top:2px;">Manager: ${t.name} · ${sorted.length} players</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.6);margin-top:2px;">Manager: ${t.name}</div>
           </div>
           <span>Pick #${t.pick}</span>
         </div>
-        <div class="roster-list">${playerRows}</div>
-        <div style="padding:8px 14px;border-top:1px solid rgba(255,255,255,0.07);font-size:0.76rem;color:var(--orange);">🔒 Keeper: <strong>${t.keeper.prob}</strong> <span style="color:var(--muted);">(Rd ${t.keeper.rd})</span></div>
+        <div class="roster-list">${slotRows}</div>
+        <div style="padding:8px 14px;border-top:1px solid rgba(255,255,255,0.07);font-size:0.76rem;color:var(--orange);">
+          🔒 Keeper: <strong>${t.keeper.prob}</strong> <span style="color:var(--muted);">(Rd ${t.keeper.rd})</span>
+        </div>
       </div>`;
   }).join('');
 
@@ -1255,7 +1296,7 @@ function renderDepthCharts() {
 
   const cards = filtered.map(t => {
     // Check if search matches this team
-    const allPlayers = [...t.QBs, ...t.RBs, ...t.WRs, ...t.TEs, t.K, t.DST];
+    const allPlayers = [...t.QBs, ...t.RBs, ...t.WRs, ...t.TEs, t.K || '', t.DST || ''];
     const teamMatches = search ? allPlayers.some(p => p && p.toLowerCase().includes(search)) : true;
     if (!teamMatches && search) return `<div class="depth-card hidden" data-team="${t.abbr}"></div>`;
 
@@ -1271,7 +1312,7 @@ function renderDepthCharts() {
     }
 
     const kHl = search && t.K && t.K.toLowerCase().includes(search);
-    const dstHl = search && t.DST.toLowerCase().includes(search);
+    const dstHl = search && t.DST && t.DST.toLowerCase().includes(search);
     if (kHl) matchCount++;
     if (dstHl) matchCount++;
 
