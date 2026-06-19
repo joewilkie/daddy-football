@@ -394,25 +394,62 @@ function showPage(id) {
 // ============================================================
 function renderTeams() {
   const grid = document.getElementById('teams-grid');
-  const slots = ['QB','RB','RB','WR','WR','TE','FLEX','D/ST','K','BE','BE','BE','BE','BE','BE','BE'];
+  const rosters = getLiveRosters();
+  const drafted = Object.values(rosters).flat().length;
+  const badge = document.getElementById('teams-status-badge');
+  if (badge) badge.textContent = drafted > 0 ? drafted + ' players rostered' : 'Draft Not Yet Held';
+
+  // Populate trade team selects
+  const selA = document.getElementById('trade-team-a');
+  const selB = document.getElementById('trade-team-b');
+  if (selA && selA.options.length === 0) {
+    TEAMS.forEach(t => {
+      selA.add(new Option(t.teamName + ' (' + t.name + ')', t.id));
+      selB.add(new Option(t.teamName + ' (' + t.name + ')', t.id));
+    });
+    if (selB.options.length > 1) selB.selectedIndex = 1;
+  }
+
+  const POS_ORDER = ['QB','RB','WR','TE','D/ST','K','?'];
+
   grid.innerHTML = TEAMS.map(t => {
     const isMe = t.id === MY_TEAM;
-    const keeperNote = `<div style="padding:8px 14px;border-top:1px solid rgba(255,255,255,0.07);font-size:0.76rem;color:var(--orange);">🔒 Keeper: <strong>${t.keeper.prob}</strong> <span style="color:var(--muted);">(Rd ${t.keeper.rd})</span></div>`;
+    const roster = rosters[t.id] || [];
+    const sorted = [...roster].sort((a, b) => {
+      const ai = POS_ORDER.indexOf(a.pos) === -1 ? 99 : POS_ORDER.indexOf(a.pos);
+      const bi = POS_ORDER.indexOf(b.pos) === -1 ? 99 : POS_ORDER.indexOf(b.pos);
+      return ai - bi || a.player.localeCompare(b.player);
+    });
+
+    const playerRows = sorted.length > 0
+      ? sorted.map(p => `
+          <div class="roster-slot" style="justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="pos-badge ${(p.pos||'').replace('/','')}">${p.pos||'?'}</span>
+              <span style="${p.source==='trade'?'color:var(--blue);':''}">${p.player}${p.source==='trade'?' 🔄':''}</span>
+            </div>
+            <button onclick="dropPlayer('${t.id}','${p.player.replace(/'/g,"\'")}','${p.pos||''}')" 
+              style="font-size:0.68rem;color:var(--muted);background:none;border:1px solid var(--border);border-radius:4px;padding:2px 6px;cursor:pointer;" 
+              title="Drop player">✕ Drop</button>
+          </div>`)
+        .join('')
+      : '<div style="padding:12px 14px;color:var(--muted);font-size:0.82rem;">No players yet — enter picks in Live Draft</div>';
+
     return `
       <div class="team-card ${isMe?'my-team':''}">
         <div class="team-card-header">
           <div>
             <h3>${isMe?'⭐ ':''} ${t.teamName}</h3>
-            <div style="font-size:0.72rem;color:rgba(255,255,255,0.6);margin-top:2px;">Manager: ${t.name}</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.6);margin-top:2px;">Manager: ${t.name} · ${sorted.length} players</div>
           </div>
           <span>Pick #${t.pick}</span>
         </div>
-        <div class="roster-list">
-          ${slots.map(s => `<div class="roster-slot"><span class="pos-badge ${s.replace('/','')}">${s}</span><span class="player-empty">TBD</span></div>`).join('')}
-        </div>
-        ${keeperNote}
+        <div class="roster-list">${playerRows}</div>
+        <div style="padding:8px 14px;border-top:1px solid rgba(255,255,255,0.07);font-size:0.76rem;color:var(--orange);">🔒 Keeper: <strong>${t.keeper.prob}</strong> <span style="color:var(--muted);">(Rd ${t.keeper.rd})</span></div>
       </div>`;
   }).join('');
+
+  renderTradeLog();
 }
 
 // ============================================================
@@ -1312,6 +1349,205 @@ function renderDepthCharts() {
   } else {
     countEl.textContent = `Showing ${filtered.length} team${filtered.length !== 1 ? 's' : ''}`;
     countEl.style.color = 'var(--muted)';
+  }
+}
+
+
+// ============================================================
+// DROP PLAYER
+// ============================================================
+function dropPlayer(teamId, player, pos) {
+  if (!confirm('Drop ' + player + ' from this roster?')) return;
+  loadDropState();
+  // Prevent double-drop
+  if (dropState.find(d => d.player.toLowerCase() === player.toLowerCase())) {
+    alert(player + ' is already dropped.');
+    return;
+  }
+  dropState.push({ teamId, player, pos, date: new Date().toLocaleDateString() });
+  saveDropState();
+  renderTeams();
+}
+
+// ============================================================
+// TRADE MODULE
+// ============================================================
+function addTradePlayerRow(side) {
+  const container = document.getElementById('trade-' + side + '-players');
+  const row = document.createElement('div');
+  row.className = 'trade-player-row';
+  row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;';
+  row.innerHTML = `
+    <input type="text" class="trade-player-input" placeholder="Player name"
+      style="flex:1;padding:7px 10px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;">
+    <select class="trade-pos-select" style="padding:7px 8px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.82rem;">
+      <option value="">Pos</option><option>QB</option><option>RB</option><option>WR</option><option>TE</option><option>D/ST</option><option>K</option>
+    </select>
+    <button onclick="this.parentElement.remove()" style="padding:4px 8px;background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);cursor:pointer;">✕</button>`;
+  container.appendChild(row);
+}
+
+function completeTrade() {
+  const teamA = document.getElementById('trade-team-a').value;
+  const teamB = document.getElementById('trade-team-b').value;
+  if (!teamA || !teamB || teamA === teamB) { alert('Select two different teams.'); return; }
+
+  const getPlayers = (side) => {
+    const rows = document.querySelectorAll('#trade-' + side + '-players .trade-player-row');
+    return Array.from(rows).map(row => ({
+      player: row.querySelector('.trade-player-input').value.trim(),
+      pos:    row.querySelector('.trade-pos-select').value,
+    })).filter(p => p.player);
+  };
+
+  const aPlayers = getPlayers('a'); // team A is giving these away
+  const bPlayers = getPlayers('b'); // team B is giving these away
+
+  if (aPlayers.length === 0 && bPlayers.length === 0) { alert('Enter at least one player in the trade.'); return; }
+
+  loadTradeState();
+  // Build moves: each move = {from, to, player, pos}
+  const moves = [];
+  aPlayers.forEach(p => moves.push({ from: teamA, to: teamB, player: p.player, pos: p.pos }));
+  bPlayers.forEach(p => moves.push({ from: teamB, to: teamA, player: p.player, pos: p.pos }));
+
+  const teamAName = TEAMS.find(t => t.id === teamA).teamName;
+  const teamBName = TEAMS.find(t => t.id === teamB).teamName;
+
+  tradeState.push({
+    id: Date.now(),
+    date: new Date().toLocaleDateString(),
+    teamA, teamB, teamAName, teamBName,
+    aGives: aPlayers, bGives: bPlayers,
+    moves,
+  });
+  saveTradeState();
+
+  // Reset form
+  document.querySelectorAll('#trade-a-players .trade-player-row').forEach((r,i) => {
+    if (i === 0) { r.querySelector('.trade-player-input').value = ''; r.querySelector('.trade-pos-select').value = ''; }
+    else r.remove();
+  });
+  document.querySelectorAll('#trade-b-players .trade-player-row').forEach((r,i) => {
+    if (i === 0) { r.querySelector('.trade-player-input').value = ''; r.querySelector('.trade-pos-select').value = ''; }
+    else r.remove();
+  });
+
+  renderTeams();
+}
+
+function undoTrade(tradeId) {
+  if (!confirm('Undo this trade? Rosters will be reverted.')) return;
+  loadTradeState();
+  tradeState = tradeState.filter(t => t.id !== tradeId);
+  saveTradeState();
+  renderTeams();
+}
+
+function renderTradeLog() {
+  loadTradeState();
+  const log = document.getElementById('trade-log');
+  if (!log) return;
+  if (tradeState.length === 0) {
+    log.innerHTML = '<div style="color:var(--muted);font-size:0.82rem;text-align:center;padding:10px;">No trades recorded yet.</div>';
+    return;
+  }
+  log.innerHTML = '<h3 style="font-size:0.92rem;color:var(--muted);margin-bottom:10px;">Trade History</h3>' +
+    [...tradeState].reverse().map(trade => {
+      const aGivesStr = trade.aGives.map(p => `<span class="pos-badge ${(p.pos||'').replace('/','')}">${p.pos||'?'}</span> ${p.player}`).join(', ') || '(nothing)';
+      const bGivesStr = trade.bGives.map(p => `<span class="pos-badge ${(p.pos||'').replace('/','')}">${p.pos||'?'}</span> ${p.player}`).join(', ') || '(nothing)';
+      return `
+        <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;flex-wrap:wrap;">
+            <div style="font-size:0.82rem;">
+              <span style="color:var(--gold);font-weight:700;">${trade.teamAName}</span> gives: ${aGivesStr}<br>
+              <span style="color:var(--blue);font-weight:700;">${trade.teamBName}</span> gives: ${bGivesStr}
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+              <span style="font-size:0.73rem;color:var(--muted);">${trade.date}</span>
+              <button onclick="undoTrade(${trade.id})" style="font-size:0.73rem;color:var(--red);background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer;">↩ Undo</button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+
+// ============================================================
+// WAIVERS PAGE
+// ============================================================
+function renderWaivers() {
+  loadDraftState(); loadTradeState(); loadDropState();
+  const rosters = getLiveRosters();
+
+  // Build set of all rostered players (lowercased)
+  const rostered = new Set();
+  Object.values(rosters).forEach(r => r.forEach(p => rostered.add(p.player.toLowerCase())));
+
+  // Add dropped players back as available
+  dropState.forEach(d => rostered.delete(d.player.toLowerCase()));
+
+  // Pull all players from PLAYER_POOL + NFL_DEPTH pool
+  const allPlayers = buildPoolFromDepthCharts();
+
+  const search   = (document.getElementById('waiver-search')  || {value:''}).value.trim().toLowerCase();
+  const posFilter= (document.getElementById('waiver-pos-filter')||{value:'all'}).value;
+  const sortBy   = (document.getElementById('waiver-sort')    || {value:'val'}).value;
+
+  let available = allPlayers.filter(p => {
+    if (rostered.has(p.n.toLowerCase())) return false;
+    if (posFilter !== 'all' && p.pos !== posFilter) return false;
+    if (search && !p.n.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  if (sortBy === 'val')  available.sort((a,b) => b.val - a.val);
+  if (sortBy === 'pos')  available.sort((a,b) => a.pos.localeCompare(b.pos) || b.val - a.val);
+  if (sortBy === 'name') available.sort((a,b) => a.n.localeCompare(b.n));
+
+  const countEl = document.getElementById('waiver-count');
+  if (countEl) countEl.textContent = available.length + ' available';
+
+  const grid = document.getElementById('waiver-grid');
+  if (!grid) return;
+
+  if (available.length === 0) {
+    grid.innerHTML = '<div style="color:var(--muted);padding:20px;">No players match your filters.</div>';
+    return;
+  }
+
+  // Group by position for display
+  const byPos = {};
+  available.forEach(p => {
+    if (!byPos[p.pos]) byPos[p.pos] = [];
+    byPos[p.pos].push(p);
+  });
+
+  const POS_ORDER = ['QB','RB','WR','TE','D/ST','K'];
+
+  if (sortBy === 'pos') {
+    grid.innerHTML = POS_ORDER.filter(pos => byPos[pos]).map(pos =>
+      `<div class="card" style="padding:0;overflow:hidden;">
+        <div style="padding:10px 14px;background:var(--green);font-weight:700;font-size:0.85rem;letter-spacing:0.05em;">${pos} — ${byPos[pos].length} available</div>
+        ${byPos[pos].map((p, i) => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-top:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="color:var(--muted);font-size:0.72rem;min-width:20px;">${i+1}.</span>
+              <span>${p.n}</span>
+            </div>
+            <span style="font-size:0.72rem;color:var(--muted);">val ${p.val}</span>
+          </div>`).join('')}
+      </div>`
+    ).join('');
+  } else {
+    grid.innerHTML = available.map((p, i) => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:8px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="color:var(--muted);font-size:0.75rem;min-width:24px;">${i+1}.</span>
+          <span class="pos-badge ${p.pos.replace('/','')}">${p.pos}</span>
+          <span>${p.n}</span>
+        </div>
+        <span style="font-size:0.72rem;color:var(--muted);">val ${p.val}</span>
+      </div>`).join('');
   }
 }
 

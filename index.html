@@ -442,6 +442,7 @@
   <button onclick="showPage('keepers')">🔒 Keepers</button>
   <button onclick="showPage('mock')">🎮 Mock Draft Sim</button>
   <button onclick="showPage('depth')">📊 NFL Depth Charts</button>
+  <button onclick="showPage('waivers')">🏆 Waivers</button>
 </nav>
 
 <!-- ==================== PAGE 1: RULES ==================== -->
@@ -633,9 +634,49 @@
 <div id="page-teams" class="page">
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:18px;">
     <h2 style="color:var(--gold);font-size:1.3rem;">🏟️ 2026–27 Teams & Rosters</h2>
-    <span class="badge badge-orange">Draft Not Yet Held — Rosters Empty</span>
+    <span id="teams-status-badge" class="badge badge-orange">Draft Not Yet Held</span>
   </div>
   <div class="team-grid" id="teams-grid"></div>
+
+  <!-- TRADE MODULE -->
+  <div class="card" style="margin-top:24px;">
+    <h2 style="margin-bottom:16px;">🔄 Trade Module</h2>
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:start;">
+      <div>
+        <label style="font-size:0.8rem;color:var(--muted);display:block;margin-bottom:6px;">TEAM GIVING</label>
+        <select id="trade-team-a" class="filter-select" style="width:100%;margin-bottom:8px;"></select>
+        <div id="trade-a-players">
+          <div class="trade-player-row" style="display:flex;gap:6px;margin-bottom:6px;">
+            <input type="text" class="trade-player-input" placeholder="Player name" style="flex:1;padding:7px 10px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;">
+            <select class="trade-pos-select" style="padding:7px 8px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.82rem;">
+              <option value="">Pos</option><option>QB</option><option>RB</option><option>WR</option><option>TE</option><option>D/ST</option><option>K</option>
+            </select>
+          </div>
+        </div>
+        <button onclick="addTradePlayerRow('a')" style="font-size:0.78rem;color:var(--blue);background:none;border:none;cursor:pointer;padding:0;">+ Add another player</button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;padding-top:32px;">
+        <span style="font-size:1.5rem;">⇄</span>
+      </div>
+      <div>
+        <label style="font-size:0.8rem;color:var(--muted);display:block;margin-bottom:6px;">TEAM RECEIVING</label>
+        <select id="trade-team-b" class="filter-select" style="width:100%;margin-bottom:8px;"></select>
+        <div id="trade-b-players">
+          <div class="trade-player-row" style="display:flex;gap:6px;margin-bottom:6px;">
+            <input type="text" class="trade-player-input" placeholder="Player name" style="flex:1;padding:7px 10px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;">
+            <select class="trade-pos-select" style="padding:7px 8px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.82rem;">
+              <option value="">Pos</option><option>QB</option><option>RB</option><option>WR</option><option>TE</option><option>D/ST</option><option>K</option>
+            </select>
+          </div>
+        </div>
+        <button onclick="addTradePlayerRow('b')" style="font-size:0.78rem;color:var(--blue);background:none;border:none;cursor:pointer;padding:0;">+ Add another player</button>
+      </div>
+    </div>
+    <div style="margin-top:14px;text-align:center;">
+      <button class="btn btn-gold" onclick="completeTrade()">✅ Complete Trade</button>
+    </div>
+    <div id="trade-log" style="margin-top:20px;"></div>
+  </div>
 </div>
 
 <!-- ==================== PAGE 3: LIVE DRAFT ==================== -->
@@ -819,6 +860,32 @@
       <div class="sim-team-grid" id="sim-team-grid"></div>
     </div>
   </div>
+</div>
+
+
+<!-- ==================== PAGE 7: WAIVERS ==================== -->
+<div id="page-waivers" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:18px;">
+    <h2 style="color:var(--gold);font-size:1.3rem;">🏆 Waiver Wire</h2>
+    <span id="waiver-count" class="badge badge-orange"></span>
+  </div>
+  <div class="card" style="margin-bottom:14px;padding:14px 18px;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <input type="text" id="waiver-search" placeholder="Search players..." oninput="renderWaivers()" style="padding:7px 12px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;min-width:200px;">
+      <select id="waiver-pos-filter" onchange="renderWaivers()" class="filter-select">
+        <option value="all">All Positions</option>
+        <option value="QB">QB</option><option value="RB">RB</option>
+        <option value="WR">WR</option><option value="TE">TE</option>
+        <option value="D/ST">D/ST</option><option value="K">K</option>
+      </select>
+      <select id="waiver-sort" onchange="renderWaivers()" class="filter-select">
+        <option value="val">Sort: Best Available</option>
+        <option value="pos">Sort: By Position</option>
+        <option value="name">Sort: By Name</option>
+      </select>
+    </div>
+  </div>
+  <div id="waiver-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;"></div>
 </div>
 
 <script src="app.js"></script>
