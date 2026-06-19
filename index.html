@@ -639,41 +639,36 @@
   <div class="team-grid" id="teams-grid"></div>
 
   <!-- TRADE MODULE -->
-  <div class="card" style="margin-top:24px;">
-    <h2 style="margin-bottom:16px;">🔄 Trade Module</h2>
-    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:start;">
+  <div class="card" style="margin-top:24px;" id="trade-module">
+    <h2 style="margin-bottom:4px;">🔄 Trade Center</h2>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:16px;">Select two teams, then click players from each roster to add them to the trade.</p>
+
+    <!-- Team pickers -->
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center;margin-bottom:16px;">
+      <select id="trade-team-a" class="filter-select" style="width:100%;" onchange="renderTradePanel()"></select>
+      <span style="font-size:1.4rem;text-align:center;">⇄</span>
+      <select id="trade-team-b" class="filter-select" style="width:100%;" onchange="renderTradePanel()"></select>
+    </div>
+
+    <!-- Side-by-side roster panels -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
       <div>
-        <label style="font-size:0.8rem;color:var(--muted);display:block;margin-bottom:6px;">TEAM GIVING</label>
-        <select id="trade-team-a" class="filter-select" style="width:100%;margin-bottom:8px;"></select>
-        <div id="trade-a-players">
-          <div class="trade-player-row" style="display:flex;gap:6px;margin-bottom:6px;">
-            <input type="text" class="trade-player-input" placeholder="Player name" style="flex:1;padding:7px 10px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;">
-            <select class="trade-pos-select" style="padding:7px 8px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.82rem;">
-              <option value="">Pos</option><option>QB</option><option>RB</option><option>WR</option><option>TE</option><option>D/ST</option><option>K</option>
-            </select>
-          </div>
-        </div>
-        <button onclick="addTradePlayerRow('a')" style="font-size:0.78rem;color:var(--blue);background:none;border:none;cursor:pointer;padding:0;">+ Add another player</button>
-      </div>
-      <div style="display:flex;align-items:center;justify-content:center;padding-top:32px;">
-        <span style="font-size:1.5rem;">⇄</span>
+        <div id="trade-panel-a-name" style="font-size:0.78rem;color:var(--muted);font-weight:700;letter-spacing:0.05em;margin-bottom:6px;">TEAM A ROSTER</div>
+        <div id="trade-panel-a" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;min-height:80px;max-height:320px;overflow-y:auto;"></div>
+        <div style="margin-top:8px;font-size:0.76rem;color:var(--muted);">Selected to trade away:</div>
+        <div id="trade-selected-a" style="min-height:32px;padding:6px 8px;background:rgba(249,115,22,0.07);border:1px solid rgba(249,115,22,0.2);border-radius:6px;margin-top:4px;font-size:0.82rem;color:var(--gold);">None selected</div>
       </div>
       <div>
-        <label style="font-size:0.8rem;color:var(--muted);display:block;margin-bottom:6px;">TEAM RECEIVING</label>
-        <select id="trade-team-b" class="filter-select" style="width:100%;margin-bottom:8px;"></select>
-        <div id="trade-b-players">
-          <div class="trade-player-row" style="display:flex;gap:6px;margin-bottom:6px;">
-            <input type="text" class="trade-player-input" placeholder="Player name" style="flex:1;padding:7px 10px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;">
-            <select class="trade-pos-select" style="padding:7px 8px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.82rem;">
-              <option value="">Pos</option><option>QB</option><option>RB</option><option>WR</option><option>TE</option><option>D/ST</option><option>K</option>
-            </select>
-          </div>
-        </div>
-        <button onclick="addTradePlayerRow('b')" style="font-size:0.78rem;color:var(--blue);background:none;border:none;cursor:pointer;padding:0;">+ Add another player</button>
+        <div id="trade-panel-b-name" style="font-size:0.78rem;color:var(--muted);font-weight:700;letter-spacing:0.05em;margin-bottom:6px;">TEAM B ROSTER</div>
+        <div id="trade-panel-b" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;min-height:80px;max-height:320px;overflow-y:auto;"></div>
+        <div style="margin-top:8px;font-size:0.76rem;color:var(--muted);">Selected to trade away:</div>
+        <div id="trade-selected-b" style="min-height:32px;padding:6px 8px;background:rgba(96,165,250,0.07);border:1px solid rgba(96,165,250,0.2);border-radius:6px;margin-top:4px;font-size:0.82rem;color:var(--blue);">None selected</div>
       </div>
     </div>
-    <div style="margin-top:14px;text-align:center;">
+
+    <div style="text-align:center;display:flex;gap:10px;justify-content:center;">
       <button class="btn btn-gold" onclick="completeTrade()">✅ Complete Trade</button>
+      <button class="btn btn-outline" onclick="clearTradeSelection()" style="font-size:0.85rem;">✕ Clear Selection</button>
     </div>
     <div id="trade-log" style="margin-top:20px;"></div>
   </div>

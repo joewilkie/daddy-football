@@ -408,6 +408,7 @@ function renderTeams() {
       selB.add(new Option(t.teamName + ' (' + t.name + ')', t.id));
     });
     if (selB.options.length > 1) selB.selectedIndex = 1;
+    renderTradePanel();
   }
 
   // Roster slot definitions
@@ -1400,10 +1401,8 @@ function renderDepthCharts() {
 function dropPlayer(teamId, player, pos) {
   if (!confirm('Drop ' + player + ' from this roster?')) return;
   loadDropState();
-  // Prevent double-drop
   if (dropState.find(d => d.player.toLowerCase() === player.toLowerCase())) {
-    alert(player + ' is already dropped.');
-    return;
+    alert(player + ' is already dropped.'); return;
   }
   dropState.push({ teamId, player, pos, date: new Date().toLocaleDateString() });
   saveDropState();
@@ -1411,21 +1410,84 @@ function dropPlayer(teamId, player, pos) {
 }
 
 // ============================================================
-// TRADE MODULE
+// TRADE MODULE — click-to-select roster UI
 // ============================================================
-function addTradePlayerRow(side) {
-  const container = document.getElementById('trade-' + side + '-players');
-  const row = document.createElement('div');
-  row.className = 'trade-player-row';
-  row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;';
-  row.innerHTML = `
-    <input type="text" class="trade-player-input" placeholder="Player name"
-      style="flex:1;padding:7px 10px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;">
-    <select class="trade-pos-select" style="padding:7px 8px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.82rem;">
-      <option value="">Pos</option><option>QB</option><option>RB</option><option>WR</option><option>TE</option><option>D/ST</option><option>K</option>
-    </select>
-    <button onclick="this.parentElement.remove()" style="padding:4px 8px;background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);cursor:pointer;">✕</button>`;
-  container.appendChild(row);
+let tradeSelected = { a: [], b: [] }; // players selected for each side
+
+function renderTradePanel() {
+  const teamA = document.getElementById('trade-team-a').value;
+  const teamB = document.getElementById('trade-team-b').value;
+
+  // Reset selection when teams change
+  tradeSelected = { a: [], b: [] };
+
+  ['a','b'].forEach(side => {
+    const teamId = side === 'a' ? teamA : teamB;
+    const team = TEAMS.find(t => t.id === teamId);
+    const nameEl = document.getElementById('trade-panel-' + side + '-name');
+    const panelEl = document.getElementById('trade-panel-' + side);
+    if (!team || !nameEl || !panelEl) return;
+
+    nameEl.textContent = (team.teamName + ' — ' + team.name).toUpperCase();
+
+    const rosters = getLiveRosters();
+    const roster = rosters[teamId] || [];
+
+    if (roster.length === 0) {
+      panelEl.innerHTML = '<div style="padding:14px;color:var(--muted);font-size:0.82rem;">No players yet — enter picks in Live Draft</div>';
+      return;
+    }
+
+    const POS_ORDER = ['QB','RB','WR','TE','D/ST','K','?'];
+    const sorted = [...roster].sort((a, b) => {
+      const ai = POS_ORDER.indexOf(a.pos) === -1 ? 99 : POS_ORDER.indexOf(a.pos);
+      const bi = POS_ORDER.indexOf(b.pos) === -1 ? 99 : POS_ORDER.indexOf(b.pos);
+      return ai - bi;
+    });
+
+    panelEl.innerHTML = sorted.map(p => {
+      const sel = tradeSelected[side].some(s => s.player === p.player);
+      const selStyle = sel
+        ? 'background:rgba(249,115,22,0.15);border-left:3px solid var(--gold);'
+        : 'border-left:3px solid transparent;';
+      return `<div onclick="toggleTradePlayer('${side}','${p.player.replace(/'/g,'&#39;')}','${p.pos||''}')"
+        style="display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;${selStyle}border-bottom:1px solid var(--border);">
+        <span class="pos-badge ${(p.pos||'').replace('/','')}">  ${p.pos||'?'}</span>
+        <span style="flex:1;font-size:0.85rem;">${p.player}</span>
+        ${sel ? '<span style="color:var(--gold);font-size:0.75rem;">✓ selected</span>' : ''}
+      </div>`;
+    }).join('');
+
+    renderTradeSelectionSummary(side);
+  });
+}
+
+function toggleTradePlayer(side, player, pos) {
+  const existing = tradeSelected[side].findIndex(s => s.player === player);
+  if (existing > -1) {
+    tradeSelected[side].splice(existing, 1);
+  } else {
+    tradeSelected[side].push({ player, pos });
+  }
+  renderTradePanel();
+}
+
+function renderTradeSelectionSummary(side) {
+  const el = document.getElementById('trade-selected-' + side);
+  if (!el) return;
+  const sel = tradeSelected[side];
+  if (sel.length === 0) {
+    el.textContent = 'None selected';
+  } else {
+    el.innerHTML = sel.map(p =>
+      `<span class="pos-badge ${(p.pos||'').replace('/','')}"> ${p.pos||'?'}</span> ${p.player}`
+    ).join('  •  ');
+  }
+}
+
+function clearTradeSelection() {
+  tradeSelected = { a: [], b: [] };
+  renderTradePanel();
 }
 
 function completeTrade() {
@@ -1433,48 +1495,35 @@ function completeTrade() {
   const teamB = document.getElementById('trade-team-b').value;
   if (!teamA || !teamB || teamA === teamB) { alert('Select two different teams.'); return; }
 
-  const getPlayers = (side) => {
-    const rows = document.querySelectorAll('#trade-' + side + '-players .trade-player-row');
-    return Array.from(rows).map(row => ({
-      player: row.querySelector('.trade-player-input').value.trim(),
-      pos:    row.querySelector('.trade-pos-select').value,
-    })).filter(p => p.player);
-  };
+  const aPlayers = tradeSelected.a;
+  const bPlayers = tradeSelected.b;
+  if (aPlayers.length === 0 && bPlayers.length === 0) {
+    alert('Select at least one player to trade.'); return;
+  }
 
-  const aPlayers = getPlayers('a'); // team A is giving these away
-  const bPlayers = getPlayers('b'); // team B is giving these away
-
-  if (aPlayers.length === 0 && bPlayers.length === 0) { alert('Enter at least one player in the trade.'); return; }
+  if (!confirm(
+    (TEAMS.find(t=>t.id===teamA).teamName) + ' sends: ' + (aPlayers.map(p=>p.player).join(', ')||'nothing') + '\n' +
+    (TEAMS.find(t=>t.id===teamB).teamName) + ' sends: ' + (bPlayers.map(p=>p.player).join(', ')||'nothing') + '\n\nComplete this trade?'
+  )) return;
 
   loadTradeState();
-  // Build moves: each move = {from, to, player, pos}
   const moves = [];
   aPlayers.forEach(p => moves.push({ from: teamA, to: teamB, player: p.player, pos: p.pos }));
   bPlayers.forEach(p => moves.push({ from: teamB, to: teamA, player: p.player, pos: p.pos }));
 
-  const teamAName = TEAMS.find(t => t.id === teamA).teamName;
-  const teamBName = TEAMS.find(t => t.id === teamB).teamName;
-
   tradeState.push({
     id: Date.now(),
     date: new Date().toLocaleDateString(),
-    teamA, teamB, teamAName, teamBName,
+    teamA, teamB,
+    teamAName: TEAMS.find(t=>t.id===teamA).teamName,
+    teamBName: TEAMS.find(t=>t.id===teamB).teamName,
     aGives: aPlayers, bGives: bPlayers,
     moves,
   });
   saveTradeState();
 
-  // Reset form
-  document.querySelectorAll('#trade-a-players .trade-player-row').forEach((r,i) => {
-    if (i === 0) { r.querySelector('.trade-player-input').value = ''; r.querySelector('.trade-pos-select').value = ''; }
-    else r.remove();
-  });
-  document.querySelectorAll('#trade-b-players .trade-player-row').forEach((r,i) => {
-    if (i === 0) { r.querySelector('.trade-player-input').value = ''; r.querySelector('.trade-pos-select').value = ''; }
-    else r.remove();
-  });
-
-  renderTeams();
+  tradeSelected = { a: [], b: [] };
+  renderTeams(); // re-renders rosters AND trade panel
 }
 
 function undoTrade(tradeId) {
@@ -1490,26 +1539,27 @@ function renderTradeLog() {
   const log = document.getElementById('trade-log');
   if (!log) return;
   if (tradeState.length === 0) {
-    log.innerHTML = '<div style="color:var(--muted);font-size:0.82rem;text-align:center;padding:10px;">No trades recorded yet.</div>';
+    log.innerHTML = '<div style="color:var(--muted);font-size:0.82rem;text-align:center;padding:10px;">No trades yet.</div>';
     return;
   }
-  log.innerHTML = '<h3 style="font-size:0.92rem;color:var(--muted);margin-bottom:10px;">Trade History</h3>' +
+  log.innerHTML = '<h3 style="font-size:0.9rem;color:var(--muted);margin-bottom:10px;border-top:1px solid var(--border);padding-top:14px;">Trade History</h3>' +
     [...tradeState].reverse().map(trade => {
-      const aGivesStr = trade.aGives.map(p => `<span class="pos-badge ${(p.pos||'').replace('/','')}">${p.pos||'?'}</span> ${p.player}`).join(', ') || '(nothing)';
-      const bGivesStr = trade.bGives.map(p => `<span class="pos-badge ${(p.pos||'').replace('/','')}">${p.pos||'?'}</span> ${p.player}`).join(', ') || '(nothing)';
-      return `
-        <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;">
-          <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;flex-wrap:wrap;">
-            <div style="font-size:0.82rem;">
-              <span style="color:var(--gold);font-weight:700;">${trade.teamAName}</span> gives: ${aGivesStr}<br>
-              <span style="color:var(--blue);font-weight:700;">${trade.teamBName}</span> gives: ${bGivesStr}
-            </div>
-            <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
-              <span style="font-size:0.73rem;color:var(--muted);">${trade.date}</span>
-              <button onclick="undoTrade(${trade.id})" style="font-size:0.73rem;color:var(--red);background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer;">↩ Undo</button>
-            </div>
+      const aGivesStr = trade.aGives.map(p =>
+        `<span class="pos-badge ${(p.pos||'').replace('/','')}">${p.pos||'?'}</span> ${p.player}`).join(', ') || '(nothing)';
+      const bGivesStr = trade.bGives.map(p =>
+        `<span class="pos-badge ${(p.pos||'').replace('/','')}">${p.pos||'?'}</span> ${p.player}`).join(', ') || '(nothing)';
+      return `<div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;flex-wrap:wrap;">
+          <div style="font-size:0.82rem;line-height:1.7;">
+            <span style="color:var(--gold);font-weight:700;">${trade.teamAName}</span> gives: ${aGivesStr}<br>
+            <span style="color:var(--blue);font-weight:700;">${trade.teamBName}</span> gives: ${bGivesStr}
           </div>
-        </div>`;
+          <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+            <span style="font-size:0.72rem;color:var(--muted);">${trade.date}</span>
+            <button onclick="undoTrade(${trade.id})" style="font-size:0.72rem;color:var(--red);background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer;">↩ Undo</button>
+          </div>
+        </div>
+      </div>`;
     }).join('');
 }
 
